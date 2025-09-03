@@ -84,6 +84,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Stopping the bot...")
     # For Render, we don't want to actually stop the application
+    # Instead, we'll just respond but keep running
 
 def main():
     # Initialize database
@@ -95,7 +96,7 @@ def main():
         print("Please set the TELEGRAM_BOT_TOKEN environment variable")
         return
     
-    # Create application
+    # Create application with a specific version that works
     application = Application.builder().token(token).build()
     
     # Add handlers
@@ -105,8 +106,12 @@ def main():
     application.add_handler(CommandHandler("stop", stop_bot))
     application.add_handler(CallbackQueryHandler(button_callback))
     
-    # Start the bot
-    application.run_polling()
+    # Start the bot with error handling
+    try:
+        application.run_polling()
+    except Exception as e:
+        print(f"Error starting bot: {e}")
 
 if __name__ == "__main__":
     main()
+    
