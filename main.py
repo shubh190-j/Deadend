@@ -1,7 +1,10 @@
 import logging
 import json
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import threading
+from flask import Flask, request, jsonify
+from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 # Enable logging
@@ -157,8 +160,48 @@ class AnimeFilterBot:
             'Users can now see and click on anime names using /list'
         )
 
+# Flask web server for health checks and webhooks
+app = Flask(__name__)
+bot_instance = None
+
+@app.route('/')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'online',
+        'bot': 'Anime Filter Bot',
+        'version': '1.0.0'
+    })
+
+@app.route('/status')
+def bot_status():
+    """Bot status endpoint"""
+    # Count total anime across all chats
+    if bot_instance:
+        data = bot_instance.load_anime_data()
+        total_anime = sum(len(chat_data.get('anime_list', [])) for chat_data in data.values())
+        total_chats = len(data)
+        return jsonify({
+            'status': 'running',
+            'total_chats': total_chats,
+            'total_anime': total_anime
+        })
+    return jsonify({'status': 'bot not initialized'})
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Webhook endpoint for Telegram updates"""
+    # This can be used for webhook mode instead of polling
+    return jsonify({'status': 'webhook received'})
+
+def run_flask_server():
+    """Run Flask server in a separate thread"""
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
 def main():
-    """Start the bot."""
+    """Start the bot and web server."""
+    global bot_instance
+    
     # Get bot token from environment variable
     TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
     
@@ -167,18 +210,23 @@ def main():
         return
     
     # Create bot instance
-    bot = AnimeFilterBot()
+    bot_instance = AnimeFilterBot()
     
     # Create application
     application = Application.builder().token(TOKEN).build()
     
     # Register handlers
-    application.add_handler(CommandHandler("start", bot.start))
-    application.add_handler(CommandHandler("help", bot.help_command))
-    application.add_handler(CommandHandler("filters", bot.add_filter))
-    application.add_handler(CommandHandler("list", bot.list_anime))
-    application.add_handler(CommandHandler("stop", bot.stop_filters))
-    application.add_handler(CommandHandler("restart", bot.start_filters))  # Alternative to start filters
+    application.add_handler(CommandHandler("start", bot_instance.start))
+    application.add_handler(CommandHandler("help", bot_instance.help_command))
+    application.add_handler(CommandHandler("filters", bot_instance.add_filter))
+    application.add_handler(CommandHandler("list", bot_instance.list_anime))
+    application.add_handler(CommandHandler("stop", bot_instance.stop_filters))
+    application.add_handler(CommandHandler("restart", bot_instance.start_filters))
+    
+    # Start Flask server in a separate thread
+    flask_thread = threading.Thread(target=run_flask_server, daemon=True)
+    flask_thread.start()
+    logger.info("Flask web server started on port 5000")
     
     # Run the bot
     logger.info("Starting Anime Filter Bot...")
