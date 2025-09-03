@@ -41,10 +41,9 @@ class AnimeFilterBot:
             'Available Commands:\n'
             '/filters <anime_name> - Add an anime to the filter list\n'
             '/list - Show all anime in the filter list\n'
-            '/stop - Stop showing filters\n'
-            '/restart - Restart showing filters\n'
-            '/help - Show detailed help message\n'
-            '/count - Show how many anime are in your list'
+            '/stop <anime_name> - Remove an anime from the filter list\n'
+            '/count - Show how many anime are in your list\n'
+            '/help - Show detailed help message'
         )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -54,15 +53,13 @@ class AnimeFilterBot:
             'Commands:\n'
             '• /filters <anime_name> - Add an anime to the filter list\n'
             '• /list - Show all anime names\n'
-            '• /stop - Stop showing filters in this chat\n'
-            '• /restart - Restart showing filters in this chat\n'
+            '• /stop <anime_name> - Remove an anime from the filter list\n'
             '• /count - Show how many anime are in your list\n'
             '• /help - Show this help message\n\n'
             'Usage:\n'
             '1. Use "/filters Jujutsu Kaisen" to add an anime\n'
             '2. Use "/list" to see all anime names\n'
-            '3. Use "/stop" to temporarily disable filters\n'
-            '4. Use "/restart" to enable filters again'
+            '3. Use "/stop Naruto" to remove an anime from the list'
         )
     
     async def add_filter(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -91,7 +88,7 @@ class AnimeFilterBot:
         
         # Initialize chat data if not exists
         if chat_id not in data:
-            data[chat_id] = {'anime_list': [], 'filters_active': True}
+            data[chat_id] = {'anime_list': []}
         
         added_count = 0
         already_exists = []
@@ -134,13 +131,6 @@ class AnimeFilterBot:
             )
             return
         
-        if not data[chat_id].get('filters_active', True):
-            await update.message.reply_text(
-                '🚫 Filters are currently stopped in this chat.\n'
-                'Use /restart to enable them again.'
-            )
-            return
-        
         anime_list = data[chat_id]['anime_list']
         
         # Create a simple bulleted list
@@ -168,42 +158,38 @@ class AnimeFilterBot:
             f'Use /list to view them all.'
         )
     
-    async def stop_filters(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Stop showing filters"""
+    async def remove_anime(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Remove a specific anime from the filter list"""
+        if not context.args:
+            await update.message.reply_text(
+                '❌ Please provide an anime name to remove!\n'
+                'Example: /stop Naruto'
+            )
+            return
+        
+        anime_name = ' '.join(context.args)
         chat_id = str(update.effective_chat.id)
         data = self.load_anime_data()
         
-        if chat_id not in data:
-            data[chat_id] = {'anime_list': [], 'filters_active': False}
+        if chat_id not in data or not data[chat_id]['anime_list']:
+            await update.message.reply_text(
+                '📝 No anime in the filter list to remove!\n'
+                'Use /filters <anime_name> to add some first.'
+            )
+            return
+        
+        if anime_name in data[chat_id]['anime_list']:
+            data[chat_id]['anime_list'].remove(anime_name)
+            self.save_anime_data(data)
+            await update.message.reply_text(
+                f'✅ Removed "{anime_name}" from the filter list!\n'
+                f'Remaining anime: {len(data[chat_id]["anime_list"])}'
+            )
         else:
-            data[chat_id]['filters_active'] = False
-        
-        self.save_anime_data(data)
-        
-        await update.message.reply_text(
-            '🚫 Filters have been stopped in this chat!\n'
-            'Users won\'t be able to see the anime list until filters are reactivated with /restart.'
-        )
-    
-    async def start_filters(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Start/restart showing filters"""
-        chat_id = str(update.effective_chat.id)
-        data = self.load_anime_data()
-        
-        if chat_id not in data:
-            data[chat_id] = {'anime_list': [], 'filters_active': True}
-            anime_count = 0
-        else:
-            data[chat_id]['filters_active'] = True
-            anime_count = len(data[chat_id]['anime_list'])
-        
-        self.save_anime_data(data)
-        
-        await update.message.reply_text(
-            f'✅ Filters have been activated!\n'
-            f'Users can now see anime names using /list\n'
-            f'Total anime in list: {anime_count}'
-        )
+            await update.message.reply_text(
+                f'❌ "{anime_name}" not found in the filter list!\n'
+                f'Use /list to see all available anime.'
+            )
 
 # Flask web server for health checks and webhooks
 app = Flask(__name__)
@@ -226,12 +212,10 @@ def bot_status():
         data = bot_instance.load_anime_data()
         total_anime = sum(len(chat_data.get('anime_list', [])) for chat_data in data.values())
         total_chats = len(data)
-        active_chats = sum(1 for chat_data in data.values() if chat_data.get('filters_active', True))
         
         return jsonify({
             'status': 'running',
             'total_chats': total_chats,
-            'active_chats': active_chats,
             'total_anime': total_anime
         })
     return jsonify({'status': 'bot not initialized'})
@@ -269,8 +253,7 @@ def main():
     application.add_handler(CommandHandler("filters", bot_instance.add_filter))
     application.add_handler(CommandHandler("list", bot_instance.list_anime))
     application.add_handler(CommandHandler("count", bot_instance.count_anime))
-    application.add_handler(CommandHandler("stop", bot_instance.stop_filters))
-    application.add_handler(CommandHandler("restart", bot_instance.start_filters))
+    application.add_handler(CommandHandler("stop", bot_instance.remove_anime))
     
     # Start Flask server in a separate thread
     flask_thread = threading.Thread(target=run_flask_server, daemon=True)
@@ -283,5 +266,4 @@ def main():
 
 if __name__ == '__main__':
     main()
-
 
