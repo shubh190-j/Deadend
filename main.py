@@ -49,13 +49,13 @@ class AnimeFilterBot:
             '🎌 Anime Filters Bot Help\n\n'
             'Commands:\n'
             '• /filters <anime_name> - Add an anime to the filter list\n'
-            '• /list - Show all anime with clickable buttons\n'
+            '• /list - Show all anime names (copyable text)\n'
             '• /stop - Stop showing filters\n'
             '• /help - Show this help message\n\n'
             'Usage:\n'
             '1. Use "/filters Jujutsu Kaisen" to add an anime\n'
-            '2. Use "/list" to see all anime with clickable buttons\n'
-            '3. Click on any anime name to copy it to your clipboard'
+            '2. Use "/list" to see all anime names\n'
+            '3. Tap and hold any anime name to copy it'
         )
     
     async def add_filter(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,7 +92,7 @@ class AnimeFilterBot:
             )
     
     async def list_anime(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show all anime with clickable buttons"""
+        """Show all anime as copyable text"""
         chat_id = str(update.effective_chat.id)
         data = self.load_anime_data()
         
@@ -112,73 +112,16 @@ class AnimeFilterBot:
         
         anime_list = data[chat_id]['anime_list']
         
-        # Create inline keyboard with anime names
-        keyboard = []
-        for anime in anime_list:
-            keyboard.append([InlineKeyboardButton(anime, callback_data=f"copy_{anime}")])
-        
-        # Add control buttons
-        keyboard.append([
-            InlineKeyboardButton("🔄 Refresh", callback_data="refresh_list"),
-            InlineKeyboardButton("❌ Close", callback_data="close_list")
-        ])
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        # Create text list of anime names
+        anime_text = '\n'.join([f'• {anime}' for anime in anime_list])
         
         await update.message.reply_text(
-            f'🎌 Anime Filter List ({len(anime_list)} total):\n'
-            'Click on any anime name to copy it!',
-            reply_markup=reply_markup
+            f'🎌 **Anime Filter List ({len(anime_list)} total):**\n\n'
+            f'{anime_text}\n\n'
+            '📋 Tap and hold any anime name above to copy it!',
+            parse_mode='Markdown'
         )
     
-    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle button clicks"""
-        query = update.callback_query
-        await query.answer()
-        
-        if query.data == "close_list":
-            await query.delete_message()
-            return
-        
-        if query.data == "refresh_list":
-            # Refresh the list
-            chat_id = str(update.effective_chat.id)
-            data = self.load_anime_data()
-            
-            if chat_id not in data or not data[chat_id]['anime_list']:
-                await query.edit_message_text("📝 No anime in the filter list!")
-                return
-            
-            anime_list = data[chat_id]['anime_list']
-            
-            # Create inline keyboard with anime names
-            keyboard = []
-            for anime in anime_list:
-                keyboard.append([InlineKeyboardButton(anime, callback_data=f"copy_{anime}")])
-            
-            keyboard.append([
-                InlineKeyboardButton("🔄 Refresh", callback_data="refresh_list"),
-                InlineKeyboardButton("❌ Close", callback_data="close_list")
-            ])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                f'🎌 Anime Filter List ({len(anime_list)} total):\n'
-                'Click on any anime name to copy it!',
-                reply_markup=reply_markup
-            )
-            return
-        
-        if query.data.startswith("copy_"):
-            anime_name = query.data[5:]  # Remove "copy_" prefix
-            
-            # Send the anime name as a copyable message
-            await query.message.reply_text(
-                f"📋 {anime_name}\n\n"
-                f"Tap and hold the text above to copy it!",
-                quote=False
-            )
     
     async def stop_filters(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Stop showing filters"""
@@ -236,7 +179,6 @@ def main():
     application.add_handler(CommandHandler("list", bot.list_anime))
     application.add_handler(CommandHandler("stop", bot.stop_filters))
     application.add_handler(CommandHandler("restart", bot.start_filters))  # Alternative to start filters
-    application.add_handler(CallbackQueryHandler(bot.button_callback))
     
     # Run the bot
     logger.info("Starting Anime Filter Bot...")
@@ -244,3 +186,5 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
