@@ -1,7 +1,15 @@
 import os
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext
 import sqlite3
+
+# Set up logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # Initialize database
 def init_db():
@@ -35,8 +43,8 @@ def get_all_filters():
     return filters
 
 # Start command
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "Welcome to Anime Filter Bot!\n\n"
         "Use /filter [anime_name] to add a new anime filter\n"
         "Use /filters to see all available filters\n"
@@ -44,22 +52,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # Add filter command
-async def add_filter_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def add_filter_command(update: Update, context: CallbackContext):
     if not context.args:
-        await update.message.reply_text("Please provide an anime name. Example: /filter Naruto")
+        update.message.reply_text("Please provide an anime name. Example: /filter Naruto")
         return
     
     filter_name = " ".join(context.args)
     if add_filter(filter_name):
-        await update.message.reply_text(f"Added filter: {filter_name}")
+        update.message.reply_text(f"Added filter: {filter_name}")
     else:
-        await update.message.reply_text(f"Filter '{filter_name}' already exists!")
+        update.message.reply_text(f"Filter '{filter_name}' already exists!")
 
 # Show all filters
-async def show_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def show_filters(update: Update, context: CallbackContext):
     filters = get_all_filters()
     if not filters:
-        await update.message.reply_text("No filters added yet. Use /filter [name] to add one.")
+        update.message.reply_text("No filters added yet. Use /filter [name] to add one.")
         return
     
     # Create buttons in rows of 2 for better mobile layout
@@ -73,18 +81,16 @@ async def show_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append(row)
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Click on an anime to copy its name:", reply_markup=reply_markup)
+    update.message.reply_text("Click on an anime to copy its name:", reply_markup=reply_markup)
 
 # Handle button clicks
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def button_callback(update: Update, context: CallbackContext):
     query = update.callback_query
-    await query.answer(f"Copied '{query.data}' to clipboard!", show_alert=True)
+    query.answer(f"Copied '{query.data}' to clipboard!", show_alert=True)
 
 # Stop command
-async def stop_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Stopping the bot...")
-    # For Render, we don't want to actually stop the application
-    # Instead, we'll just respond but keep running
+def stop_bot(update: Update, context: CallbackContext):
+    update.message.reply_text("Stopping the bot...")
 
 def main():
     # Initialize database
@@ -93,24 +99,28 @@ def main():
     # Get token from environment variable
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     if not token:
-        print("Please set the TELEGRAM_BOT_TOKEN environment variable")
+        logger.error("Please set the TELEGRAM_BOT_TOKEN environment variable")
         return
     
-    # Create application with a specific version that works
-    application = Application.builder().token(token).build()
+    # Create updater with the token
+    updater = Updater(token, use_context=True)
+    
+    # Get the dispatcher to register handlers
+    dp = updater.dispatcher
     
     # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("filter", add_filter_command))
-    application.add_handler(CommandHandler("filters", show_filters))
-    application.add_handler(CommandHandler("stop", stop_bot))
-    application.add_handler(CallbackQueryHandler(button_callback))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("filter", add_filter_command))
+    dp.add_handler(CommandHandler("filters", show_filters))
+    dp.add_handler(CommandHandler("stop", stop_bot))
+    dp.add_handler(CallbackQueryHandler(button_callback))
     
-    # Start the bot with error handling
-    try:
-        application.run_polling()
-    except Exception as e:
-        print(f"Error starting bot: {e}")
+    # Start the Bot
+    updater.start_polling()
+    
+    # Run the bot until you press Ctrl-C or the process receives SIGINT,
+    # SIGTERM or SIGABRT
+    updater.idle()
 
 if __name__ == "__main__":
     main()
